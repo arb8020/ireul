@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import subprocess
+import traceback
 
 import openai
 
@@ -76,16 +77,14 @@ def execute_bash_command(input_json):
 
         command = input_data.get("command", "")
 
-        # Execute the command and capture output
         result = subprocess.run(
             command,
             shell=True,
             capture_output=True,
             text=True,
-            timeout=30,  # Timeout after 30 seconds
+            timeout=30,
         )
 
-        # Prepare the response
         if result.returncode == 0:
             return result.stdout, None
         else:
@@ -106,7 +105,7 @@ bash_command_definition = ToolDefinition(
     input_schema=bash_command_input_schema,
     function=execute_bash_command,
 )
-# First, let's define the input schema for edit_file
+
 edit_file_input_schema = {
     "type": "object",
     "properties": {
@@ -127,7 +126,6 @@ edit_file_input_schema = {
 }
 
 
-# Now, let's implement the edit_file function
 def edit_file(input_json):
     """Edit a file by replacing text or create a new file."""
     try:
@@ -140,39 +138,32 @@ def edit_file(input_json):
         old_str = input_data.get("old_str", "")
         new_str = input_data.get("new_str", "")
 
-        # Validate inputs
         if not path:
             return "", "Path cannot be empty"
         if old_str == new_str:
             return "", "old_str and new_str must be different"
 
-        # Create file if it doesn't exist and old_str is empty
         if not os.path.exists(path) and old_str == "":
-            # Create directory if needed
+
             directory = os.path.dirname(path)
             if directory and not os.path.exists(directory):
                 os.makedirs(directory)
 
-            # Write the new file
             with open(path, "w") as file:
                 file.write(new_str)
             return f"Successfully created file {path}", None
 
-        # Read existing file
         try:
             with open(path, "r") as file:
                 content = file.read()
         except FileNotFoundError:
             return "", f"File {path} not found"
 
-        # Replace text
         new_content = content.replace(old_str, new_str)
 
-        # Check if any replacements were made
         if new_content == content and old_str != "":
             return "", "old_str not found in file"
 
-        # Write updated content back to file
         with open(path, "w") as file:
             file.write(new_content)
 
@@ -181,7 +172,6 @@ def edit_file(input_json):
         return "", str(e)
 
 
-# Create the tool definition
 edit_file_definition = ToolDefinition(
     name="edit_file",
     description="Make edits to a text file. Replaces 'old_str' with 'new_str' in the given file. "
@@ -224,13 +214,19 @@ def add_message(conversation, message):
 
 
 class Agent:
-    def __init__(self, client, get_user_message, tools, require_confirmation=True):
+    def __init__(
+        self,
+        client,
+        get_user_message,
+        tools,
+        model="gpt-4.1-mini",
+        require_confirmation=True,
+    ):
         self.client = client
         self.get_user_message = get_user_message
         self.tools = tools
+        self.model = model
         self.require_confirmation = require_confirmation
-
-    # ---- PURE STATE TRANSFORMATION METHODS ----
 
     def add_message(self, conversation, message):
         """Pure function: Add a message to the conversation."""
@@ -247,7 +243,6 @@ class Agent:
         if tool_def is None:
             return "", "Tool not found", False
 
-        # Check for confirmation if required
         if self.require_confirmation:
             if not self.get_user_confirmation(name, input_data):
                 return "", "Tool execution denied by user", True
@@ -265,20 +260,24 @@ class Agent:
             function_name = function_call.name
             function_args = json.loads(function_call.arguments)
 
-            # Display the tool call
             print(format_tool_call(function_name, function_args))
 
             if tools_rejected:
-                # Skip execution if a previous tool was rejected
+
                 result = ""
                 error = "Skipped - previous tool was rejected"
-                print(format_debug_info("Skipping tool execution due to previous rejection"))
+                print(
+                    format_debug_info(
+                        "Skipping tool execution due to previous rejection"
+                    )
+                )
             else:
-                # Execute the tool (includes confirmation if required)
-                result, error, rejected = self.execute_tool(function_name, function_args)
+
+                result, error, rejected = self.execute_tool(
+                    function_name, function_args
+                )
                 tools_rejected = rejected
 
-            # Add the tool response to the conversation
             tool_response = {
                 "role": "tool",
                 "tool_call_id": tool_call.id,
@@ -287,7 +286,6 @@ class Agent:
             }
             new_conversation = self.add_message(new_conversation, tool_response)
 
-            # Display the result
             print(format_tool_result(function_name, result, error))
 
         return new_conversation
@@ -295,12 +293,14 @@ class Agent:
     def get_user_confirmation(self, tool_name, args):
         """Ask for and return user confirmation to execute a tool."""
         formatted_args = json.dumps(args, indent=2)
-        print(f"\033[95mConfirmation required\033[0m: Execute '{tool_name}' with arguments:")
+        print(
+            f"\033[95mConfirmation required\033[0m: Execute '{tool_name}' with arguments:"
+        )
         print(f"\033[95m{formatted_args}\033[0m")
         print("\033[95mAllow? (y/n):\033[0m ", end="")
         try:
             response = input().strip().lower()
-            return response == 'y' or response == 'yes'
+            return response == "y" or response == "yes"
         except EOFError:
             return False
 
@@ -320,7 +320,7 @@ class Agent:
             )
 
         return self.client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model=self.model,
             messages=conversation,
             tools=openai_tools,
             tool_choice="auto",
@@ -328,14 +328,12 @@ class Agent:
 
     def get_assistant_response(self, conversation):
         """Get a single response from the assistant and add it to the conversation."""
-        # Get assistant response (API call)
+
         response = self.run_inference(conversation)
         message = response.choices[0].message
 
-        # Update conversation with assistant message
         new_conversation = self.add_message(conversation, message)
 
-        # Display assistant message
         if message.content:
             print(format_assistant_message(message.content))
         elif hasattr(message, "tool_calls") and message.tool_calls:
@@ -359,18 +357,16 @@ class Agent:
                     )
                 )
 
-            # Get assistant response
             conversation, message = self.get_assistant_response(conversation)
 
-            # Check for tool calls
             has_tool_calls = hasattr(message, "tool_calls") and message.tool_calls
             if not has_tool_calls:
                 break
-
-            # Handle tool calls
+            
             conversation = self.process_tool_calls(conversation, message.tool_calls)
 
         return conversation, has_tool_calls
+
 
     def run_step(self, conversation, user_input):
         """Process a single conversation turn."""
@@ -400,12 +396,24 @@ class Agent:
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description="Chat with OpenAI with functional programming principles"
+        description="Chat with AI models using various providers"
     )
     parser.add_argument(
         "--api-key",
         type=str,
-        help="OpenAI API key (if not provided, will use OPENAI_API_KEY environment variable)",
+        help="API key (if not provided, will use OPENAI_API_KEY for OpenAI or GEMINI_API_KEY for Google)",
+    )
+    parser.add_argument(
+        "--provider",
+        type=str,
+        choices=["openai", "google"],
+        default="openai",
+        help="Model provider (default: openai)",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        help="Model name (default: gpt-4.1-mini for OpenAI, gemini-2.0-flash for Google)",
     )
     parser.add_argument(
         "--no-confirm",
@@ -415,9 +423,36 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def main(api_key=None, require_confirmation=True):
-    """Main function with explicit API key parameter"""
-    client = openai.OpenAI(api_key=api_key)
+def main(api_key=None, provider="openai", model=None, require_confirmation=True):
+    """Main function with explicit parameters"""
+
+    if model is None:
+        model = "gpt-4.1-mini" if provider == "openai" else "gemini-2.0-flash"
+
+    if api_key is None:
+        if provider == "openai":
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "OpenAI API key is required. Please provide it with --api-key or set the OPENAI_API_KEY environment variable."
+                )
+        elif provider == "google":
+            api_key = os.environ.get("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "Google API key is required. Please provide it with --api-key or set the GEMINI_API_KEY environment variable."
+                )
+
+    client_kwargs = {"api_key": api_key}
+
+    if provider == "google":
+        client_kwargs["base_url"] = (
+            "https://generativelanguage.googleapis.com/v1beta/openai/"
+        )
+
+    client = openai.OpenAI(**client_kwargs)
+
+    print(f"Using {provider} provider with model: {model}")
 
     def get_user_message():
         try:
@@ -428,14 +463,26 @@ def main(api_key=None, require_confirmation=True):
 
     tools = [read_file_definition, bash_command_definition, edit_file_definition]
     agent = Agent(
-        client, get_user_message, tools, require_confirmation=require_confirmation
+        client,
+        get_user_message,
+        tools,
+        model=model,
+        require_confirmation=require_confirmation,
     )
     try:
         agent.run()
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print("\n\033[91mError occurred:\033[0m")
+        print(f"\033[91m{str(e)}\033[0m\n")
+        print("\033[91mFull traceback:\033[0m")
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(api_key=args.api_key, require_confirmation=not args.no_confirm)
+    main(
+        api_key=args.api_key,
+        provider=args.provider,
+        model=args.model,
+        require_confirmation=not args.no_confirm,
+    )
