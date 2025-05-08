@@ -4,27 +4,11 @@
 #     "anthropic",
 # ]
 # ///
+
 import sys
 import anthropic
 import readline  # For better input handling
 import json
-
-def main():
-    client = anthropic.Anthropic()
-    
-    def get_user_message():
-        try:
-            message = input()
-            return message, True
-        except EOFError:
-            return "", False
-    
-    tools = [read_file_definition]
-    agent = Agent(client, get_user_message, tools)  # Pass tools to constructor
-    try:
-        agent.run()
-    except Exception as e:
-        print(f"Error: {str(e)}")
 
 class ToolDefinition:
     def __init__(self, name, description, input_schema, function):
@@ -183,6 +167,22 @@ class Agent:
         
         return message
 
+ def main():
+    client = anthropic.Anthropic()
     
+    def get_user_message():
+        try:
+            message = input()
+            return message, True
+        except EOFError:
+            return "", False
+    
+    tools = [read_file_definition]
+    agent = Agent(client, get_user_message, tools)  # Pass tools to constructor
+    try:
+        agent.run()
+    except Exception as e:
+        print(f"Error: {str(e)}")
+   
 if __name__ == "__main__":
     main()
