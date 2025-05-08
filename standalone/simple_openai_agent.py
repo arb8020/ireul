@@ -7,6 +7,7 @@
 
 import argparse
 import json
+import os
 import subprocess
 
 import openai
@@ -31,14 +32,6 @@ read_file_input_schema = {
     "required": ["path"],
 }
 
-bash_command_input_schema = {
-    "type": "object",
-    "properties": {
-        "command": {"type": "string", "description": "The bash command to execute."}
-    },
-    "required": ["command"],
-}
-
 
 def read_file(input_json):
     try:
@@ -55,6 +48,22 @@ def read_file(input_json):
         return content, None
     except Exception as e:
         return "", e
+
+
+read_file_definition = ToolDefinition(
+    name="read_file",
+    description="Read the contents of a given relative file path. Use this when you want to see what's inside a file. Do not use this with directory names.",
+    input_schema=read_file_input_schema,
+    function=read_file,
+)
+
+bash_command_input_schema = {
+    "type": "object",
+    "properties": {
+        "command": {"type": "string", "description": "The bash command to execute."}
+    },
+    "required": ["command"],
+}
 
 
 def execute_bash_command(input_json):
@@ -91,18 +100,95 @@ def execute_bash_command(input_json):
         return "", str(e)
 
 
-read_file_definition = ToolDefinition(
-    name="read_file",
-    description="Read the contents of a given relative file path. Use this when you want to see what's inside a file. Do not use this with directory names.",
-    input_schema=read_file_input_schema,
-    function=read_file,
-)
-
 bash_command_definition = ToolDefinition(
     name="execute_bash",
     description="Execute a bash command and get its output. Use this for running system commands, checking files, or other shell operations.",
     input_schema=bash_command_input_schema,
     function=execute_bash_command,
+)
+# First, let's define the input schema for edit_file
+edit_file_input_schema = {
+    "type": "object",
+    "properties": {
+        "path": {
+            "type": "string",
+            "description": "The relative path of a file in the working directory.",
+        },
+        "old_str": {
+            "type": "string",
+            "description": "Text to search for - must match exactly.",
+        },
+        "new_str": {
+            "type": "string",
+            "description": "Text to replace old_str with.",
+        },
+    },
+    "required": ["path", "old_str", "new_str"],
+}
+
+
+# Now, let's implement the edit_file function
+def edit_file(input_json):
+    """Edit a file by replacing text or create a new file."""
+    try:
+        if isinstance(input_json, str):
+            input_data = json.loads(input_json)
+        else:
+            input_data = input_json
+
+        path = input_data.get("path", "")
+        old_str = input_data.get("old_str", "")
+        new_str = input_data.get("new_str", "")
+
+        # Validate inputs
+        if not path:
+            return "", "Path cannot be empty"
+        if old_str == new_str:
+            return "", "old_str and new_str must be different"
+
+        # Create file if it doesn't exist and old_str is empty
+        if not os.path.exists(path) and old_str == "":
+            # Create directory if needed
+            directory = os.path.dirname(path)
+            if directory and not os.path.exists(directory):
+                os.makedirs(directory)
+
+            # Write the new file
+            with open(path, "w") as file:
+                file.write(new_str)
+            return f"Successfully created file {path}", None
+
+        # Read existing file
+        try:
+            with open(path, "r") as file:
+                content = file.read()
+        except FileNotFoundError:
+            return "", f"File {path} not found"
+
+        # Replace text
+        new_content = content.replace(old_str, new_str)
+
+        # Check if any replacements were made
+        if new_content == content and old_str != "":
+            return "", "old_str not found in file"
+
+        # Write updated content back to file
+        with open(path, "w") as file:
+            file.write(new_content)
+
+        return "OK", None
+    except Exception as e:
+        return "", str(e)
+
+
+# Create the tool definition
+edit_file_definition = ToolDefinition(
+    name="edit_file",
+    description="Make edits to a text file. Replaces 'old_str' with 'new_str' in the given file. "
+    "If 'old_str' is empty and the file doesn't exist, a new file will be created with 'new_str' as content. "
+    "'old_str' and 'new_str' must be different from each other.",
+    input_schema=edit_file_input_schema,
+    function=edit_file,
 )
 
 
@@ -138,10 +224,11 @@ def add_message(conversation, message):
 
 
 class Agent:
-    def __init__(self, client, get_user_message, tools):
+    def __init__(self, client, get_user_message, tools, require_confirmation=True):
         self.client = client
         self.get_user_message = get_user_message
         self.tools = tools
+        self.require_confirmation = require_confirmation
 
     # ---- PURE STATE TRANSFORMATION METHODS ----
 
@@ -149,48 +236,8 @@ class Agent:
         """Pure function: Add a message to the conversation."""
         return conversation + [message]
 
-    def add_tool_responses(self, conversation, tool_calls):
-        """Pure function: Add tool responses to the conversation."""
-        new_conversation = conversation.copy()
-
-        for tool_call in tool_calls:
-            function_call = tool_call.function
-            function_name = function_call.name
-            function_args = json.loads(function_call.arguments)
-
-            result, error = self.execute_tool(function_name, function_args)
-
-            tool_response = {
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "name": function_name,
-                "content": result if not error else str(error),
-            }
-
-            new_conversation = self.add_message(new_conversation, tool_response)
-
-        return new_conversation
-
-    def handle_tool_interactions(self, tool_calls):
-        """I/O operation: Display tool calls and their results."""
-        results = {}
-
-        for tool_call in tool_calls:
-            function_call = tool_call.function
-            function_name = function_call.name
-            function_args = json.loads(function_call.arguments)
-
-            print(format_tool_call(function_name, function_args))
-
-            result, error = self.execute_tool(function_name, function_args)
-            results[tool_call.id] = (result, error)
-
-            print(format_tool_result(function_name, result, error))
-
-        return results
-
     def execute_tool(self, name, input_data):
-        """External operation: Execute a tool by name."""
+        """Execute a tool by name. Returns (result, is_error, was_rejected)."""
         tool_def = None
         for tool in self.tools:
             if tool.name == name:
@@ -198,9 +245,64 @@ class Agent:
                 break
 
         if tool_def is None:
-            return "Tool not found", True
+            return "", "Tool not found", False
 
-        return tool_def.function(input_data)
+        # Check for confirmation if required
+        if self.require_confirmation:
+            if not self.get_user_confirmation(name, input_data):
+                return "", "Tool execution denied by user", True
+
+        result, error = tool_def.function(input_data)
+        return result, error, False
+
+    def process_tool_calls(self, conversation, tool_calls):
+        """Process tool calls: display, confirm, execute, and add results to conversation."""
+        new_conversation = conversation.copy()
+        tools_rejected = False
+
+        for tool_call in tool_calls:
+            function_call = tool_call.function
+            function_name = function_call.name
+            function_args = json.loads(function_call.arguments)
+
+            # Display the tool call
+            print(format_tool_call(function_name, function_args))
+
+            if tools_rejected:
+                # Skip execution if a previous tool was rejected
+                result = ""
+                error = "Skipped - previous tool was rejected"
+                print(format_debug_info("Skipping tool execution due to previous rejection"))
+            else:
+                # Execute the tool (includes confirmation if required)
+                result, error, rejected = self.execute_tool(function_name, function_args)
+                tools_rejected = rejected
+
+            # Add the tool response to the conversation
+            tool_response = {
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "name": function_name,
+                "content": result if not error else error,
+            }
+            new_conversation = self.add_message(new_conversation, tool_response)
+
+            # Display the result
+            print(format_tool_result(function_name, result, error))
+
+        return new_conversation
+
+    def get_user_confirmation(self, tool_name, args):
+        """Ask for and return user confirmation to execute a tool."""
+        formatted_args = json.dumps(args, indent=2)
+        print(f"\033[95mConfirmation required\033[0m: Execute '{tool_name}' with arguments:")
+        print(f"\033[95m{formatted_args}\033[0m")
+        print("\033[95mAllow? (y/n):\033[0m ", end="")
+        try:
+            response = input().strip().lower()
+            return response == 'y' or response == 'yes'
+        except EOFError:
+            return False
 
     def run_inference(self, conversation):
         """External operation: Make an API call to get a response."""
@@ -266,8 +368,7 @@ class Agent:
                 break
 
             # Handle tool calls
-            self.handle_tool_interactions(message.tool_calls)
-            conversation = self.add_tool_responses(conversation, message.tool_calls)
+            conversation = self.process_tool_calls(conversation, message.tool_calls)
 
         return conversation, has_tool_calls
 
@@ -306,10 +407,15 @@ def parse_arguments():
         type=str,
         help="OpenAI API key (if not provided, will use OPENAI_API_KEY environment variable)",
     )
+    parser.add_argument(
+        "--no-confirm",
+        action="store_true",
+        help="Disable confirmation before executing tools (by default, confirmation is required)",
+    )
     return parser.parse_args()
 
 
-def main(api_key=None):
+def main(api_key=None, require_confirmation=True):
     """Main function with explicit API key parameter"""
     client = openai.OpenAI(api_key=api_key)
 
@@ -320,8 +426,10 @@ def main(api_key=None):
         except EOFError:
             return "", False
 
-    tools = [read_file_definition, bash_command_definition]
-    agent = Agent(client, get_user_message, tools)
+    tools = [read_file_definition, bash_command_definition, edit_file_definition]
+    agent = Agent(
+        client, get_user_message, tools, require_confirmation=require_confirmation
+    )
     try:
         agent.run()
     except Exception as e:
@@ -330,4 +438,4 @@ def main(api_key=None):
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(api_key=args.api_key)
+    main(api_key=args.api_key, require_confirmation=not args.no_confirm)
