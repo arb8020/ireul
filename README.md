@@ -1,11 +1,19 @@
 # Ireul
 
+inspired by Neon Genesis Evangelion's [11th angel](https://evangelion.fandom.com/wiki/Ireul), Iruel
+- infiltrates your codebase with 'ireul agent'
+- helps you create prompts to copy-paste to external LLMs with 'ireul prompt'
+- and more to come!
+
+open-source, bring your own API keys
+
 ## features
 
 - **ireul agent**: Interactive AI coding assistant with tool capabilities
-  - inspired by claude code
+  - heavily inspired by [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)
+  - (does not actually support Claude as a provider yet)
 - **ireul prompt**: git-like workflow for creating context-rich LLM prompts
-  - inspired by repoprompt
+  - heavily inspired by [RepoPrompt](https://repoprompt.com/)
   - add/remove files with token counting
   - include specialized personas
   - export as formatted XML
@@ -24,7 +32,7 @@ uv pip install -e .
 
 ## usage
 
-### iruel agent 
+### ireul agent 
 
 run the interactive agent:
 
@@ -66,7 +74,7 @@ ireul prompt export -o prompt.txt
 
 ## personas
 
-Ireul uses YAML files in `~/.ireul/personas/` to define different roles for your prompts:
+ireul uses YAML files in `~/.ireul/personas/` to define different roles for your prompts:
 
 - `architect.yaml`: software architecture and implementation planning
 - `engineer.yaml`: concrete code changes and implementation details
@@ -74,7 +82,18 @@ Ireul uses YAML files in `~/.ireul/personas/` to define different roles for your
 
 ## roadmap 
 
-- more useful CLI commands to go with 'ireul agent' and 'ireul context'
-- static analysis or something to make it easier to select context without whole files
-- nvim for working into the editor (tab complete, inline LLM-powered edits)
+- ireul agent
+  - support anthropic models
+  - openrouter
+  - more intelligent context management (probably shouldn't be reading whole files)
+  - conversation persistence
+
+- ireul prompt
+  - static analysis/LSP something to make it easier to select relevant context without whole files
+
+- more useful CLI commands to go with 'ireul agent' and 'ireul context' (not sure abt shape of this)
+
+- ireul.nvim
+  - copilot-like tab complete
+  - command-k inspired inline edits
 
