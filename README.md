@@ -94,10 +94,11 @@ ireul prompt export -o prompt.txt
 ## roadmap 
 
 - `ireul agent`
-  - support anthropic models
-  - support openrouter
-  - more intelligent context management
+  - support anthropic models + openrouter
+  - pass `ireurl prompt` or other generic initial prompt to `ireul agent`
+  - more intelligent context management (compacting, not reading whole files)
   - conversation persistence
+  - sub-agent tool
 
 - `ireul prompt`
   - static analysis/LSP something to make it easier to select relevant context without whole files
