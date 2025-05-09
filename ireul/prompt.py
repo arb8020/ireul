@@ -154,9 +154,17 @@ def generate_file_map(files):
     return file_map
 
 
-def format_prompt_as_xml(prompt, files_content):
+def format_prompt_as_xml(prompt, files_content, patch_type=None):
     """Format prompt as XML."""
     xml = ""
+
+    # Add patch formatting instructions if requested
+    if patch_type:
+        patch_instructions = load_patch_instructions(patch_type)
+        if patch_instructions:
+            xml += "<xml_formatting_instructions>\n"
+            xml += patch_instructions
+            xml += "\n</xml_formatting_instructions>\n\n"
 
     # Add file map if files exist
     if prompt["files"]:
@@ -195,6 +203,94 @@ def format_prompt_as_xml(prompt, files_content):
 # --- Storage functions ---
 
 
+def get_persona_dir(user_dir=True):
+    """Get the directory where personas are stored.
+
+    Args:
+        user_dir: If True, returns user customization directory.
+                 If False, returns bundled defaults directory.
+    """
+    if user_dir:
+        # User customizations directory
+        home_dir = os.path.expanduser("~")
+        persona_dir = os.path.join(home_dir, ".ireul", "personas")
+        os.makedirs(persona_dir, exist_ok=True)
+        return persona_dir
+    else:
+        # Bundled defaults directory
+        package_dir = os.path.dirname(__file__)
+        return os.path.join(package_dir, "personas")
+
+
+def load_persona(name):
+    """Load a persona by name."""
+    # First check user directory
+    user_dir = get_persona_dir(user_dir=True)
+    user_path = os.path.join(user_dir, f"{name}.yaml")
+
+    # Then check bundled directory
+    pkg_dir = get_persona_dir(user_dir=False)
+    pkg_path = os.path.join(pkg_dir, f"{name}.yaml")
+
+    # Try user path first, then package path
+    for path in [user_path, pkg_path]:
+        if os.path.exists(path):
+            try:
+                import yaml
+
+                with open(path, "r") as f:
+                    return yaml.safe_load(f)
+            except Exception as e:
+                print(f"Error loading persona '{name}' from {path}: {str(e)}")
+                # Continue to try next path
+
+    return None
+
+
+def get_patch_dir(user_dir=True):
+    """Get the directory where patch instructions are stored."""
+    if user_dir:
+        # User customizations directory
+        home_dir = os.path.expanduser("~")
+        patch_dir = os.path.join(home_dir, ".ireul", "patching")
+        os.makedirs(patch_dir, exist_ok=True)
+        return patch_dir
+    else:
+        # Bundled defaults directory
+        package_dir = os.path.dirname(__file__)
+        return os.path.join(package_dir, "patching")
+
+
+def load_patch_instructions(patch_type="xml"):
+    """Load patch instructions of the specified type."""
+    # Check user directory
+    user_dir = get_patch_dir(user_dir=True)
+    user_path = os.path.join(user_dir, f"{patch_type}.txt")
+
+    # Check bundled directory
+    pkg_dir = get_patch_dir(user_dir=False)
+    pkg_path = os.path.join(pkg_dir, f"{patch_type}.txt")
+
+    # Also check legacy location
+    package_dir = os.path.dirname(__file__)
+    legacy_path = os.path.join(package_dir, "..", f"{patch_type}prompt.txt")
+
+    # Try paths in order of preference
+    for path in [user_path, pkg_path, legacy_path]:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return f.read()
+            except Exception as e:
+                print(
+                    f"Warning: Error reading patch instructions from {path}: {str(e)}"
+                )
+                # Continue to try next path
+
+    print(f"Warning: No patch instructions found for '{patch_type}'")
+    return ""
+
+
 def get_prompt_dir():
     """Get the directory where prompts are stored."""
     home_dir = os.path.expanduser("~")
@@ -203,37 +299,11 @@ def get_prompt_dir():
     return prompt_dir
 
 
-def get_persona_dir():
-    """Get the directory where personas are stored."""
-    home_dir = os.path.expanduser("~")
-    persona_dir = os.path.join(home_dir, ".ireul", "personas")
-    os.makedirs(persona_dir, exist_ok=True)
-    return persona_dir
-
-
 def list_personas():
     """List available personas."""
     persona_dir = get_persona_dir()
     persona_files = glob.glob(os.path.join(persona_dir, "*.yaml"))
     return [os.path.basename(f).replace(".yaml", "") for f in persona_files]
-
-
-def load_persona(name):
-    """Load a persona by name."""
-    persona_dir = get_persona_dir()
-    persona_path = os.path.join(persona_dir, f"{name}.yaml")
-
-    if not os.path.exists(persona_path):
-        return None
-
-    try:
-        import yaml
-
-        with open(persona_path, "r") as f:
-            return yaml.safe_load(f)
-    except Exception as e:
-        print(f"Error loading persona '{name}': {str(e)}")
-        return None
 
 
 def get_current_prompt_path():
@@ -534,8 +604,13 @@ def handle_export(args):
         content = get_file_content(file_path)
         files_content[file_path] = content
 
+    # Determine patch type (if any)
+    patch_type = args.patch_type if args.patch else None
+
     # Format as XML
-    formatted_prompt = format_prompt_as_xml(prompt, files_content)
+    formatted_prompt = format_prompt_as_xml(
+        prompt, files_content, patch_type=patch_type
+    )
 
     # Determine output path
     if args.output:
@@ -629,6 +704,17 @@ def main():
     )
     export_parser.add_argument(
         "--stdout", action="store_true", help="Print to stdout instead of file"
+    )
+    export_parser.add_argument(
+        "--patch",
+        action="store_true",
+        help="Include instructions for generating code patches",
+    )
+    export_parser.add_argument(
+        "--patch-type",
+        choices=["xml"],
+        default="xml",
+        help="Specify the patch format type (default: xml)",
     )
 
     add_path_completer(add_parser)
