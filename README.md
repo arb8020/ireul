@@ -30,7 +30,7 @@ open-source, bring your own API keys!
 git clone https://github.com/arb8020/ireul.git
 cd ireul
 
-# install in dev mode with uv (~~recommended~~ required)
+# install in dev mode with uv (required)
 uv pip install -e .
 ```
 
