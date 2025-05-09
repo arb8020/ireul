@@ -1,11 +1,16 @@
 # Ireul
 
-inspired by Neon Genesis Evangelion's [11th angel](https://evangelion.fandom.com/wiki/Ireul), Iruel
-- infiltrates your codebase with 'ireul agent'
-- helps you create prompts to copy-paste to external LLMs with 'ireul prompt'
+<div>
+<img align="right" width="200" src="https://github.com/user-attachments/assets/5ced0c8d-4361-44a7-bfe1-9ab091533c02">
+
+inspired by Neon Genesis Evangelion's eleventh angel, [Iruel](https://evangelion.fandom.com/wiki/Ireul):
+- infiltrates your codebase with `ireul agent`
+- helps you create prompts to copy-paste to external LLMs with `ireul prompt`
 - and more to come!
 
-open-source, bring your own API keys
+</div>
+
+open-source, bring your own API keys!
 
 ## features
 
@@ -27,12 +32,11 @@ cd ireul
 
 # install in dev mode with uv (~~recommended~~ required)
 uv pip install -e .
-
 ```
 
 ## usage
 
-### ireul agent 
+### `ireul agent`
 
 run the interactive agent:
 
@@ -40,12 +44,19 @@ run the interactive agent:
 ireul agent
 ```
 
+make sure to: 
+
+```bash
+export OPENAI_API_KEY=
+export GEMINI_API_KEY=
+```
+
 the agent can:
 - read and edit files
 - execute commands with bash
 - search for files using grep/glob patterns
 
-### ireul prompt 
+### `ireul prompt`
 
 create and manage prompts for LLMs with a Git-like workflow:
 
@@ -74,7 +85,7 @@ ireul prompt export -o prompt.txt
 
 ## personas
 
-ireul uses YAML files in `~/.ireul/personas/` to define different roles for your prompts:
+`ireul` uses YAML files in `~/.ireul/personas/` to define different roles for your prompts:
 
 - `architect.yaml`: software architecture and implementation planning
 - `engineer.yaml`: concrete code changes and implementation details
@@ -82,18 +93,18 @@ ireul uses YAML files in `~/.ireul/personas/` to define different roles for your
 
 ## roadmap 
 
-- ireul agent
+- `ireul agent`
   - support anthropic models
-  - openrouter
-  - more intelligent context management (probably shouldn't be reading whole files)
+  - support openrouter
+  - more intelligent context management
   - conversation persistence
 
-- ireul prompt
+- `ireul prompt`
   - static analysis/LSP something to make it easier to select relevant context without whole files
 
 - more useful CLI commands to go with 'ireul agent' and 'ireul context' (not sure abt shape of this)
 
-- ireul.nvim
+- `ireul.nvim`
   - copilot-like tab complete
   - command-k inspired inline edits
 
